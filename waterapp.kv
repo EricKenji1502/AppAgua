@@ -1,0 +1,48 @@
+# Arquivo: waterapp.kv
+<WaterAppLayout>:
+    orientation: 'vertical'
+    padding: 20
+    spacing: 15
+
+    # IDs permitem que o código Python acesse estes elementos
+    id: main_layout 
+
+    Label:
+        text: "Meu Lembrete de Água"
+        font_size: '24sp'
+        size_hint_y: 0.1 # Ocupa 10% da altura
+
+    Label:
+        id: time_goal_label
+        text: "Até agora, você deveria ter bebido: 0 ml"
+        font_size: '16sp'
+        size_hint_y: 0.1
+
+    ProgressBar:
+        id: progress_bar
+        max: root.total_goal # O valor máximo da barra é a meta total
+        value: 0
+        size_hint_y: 0.1
+
+    Label:
+        id: progress_label
+        text: f"0 / {root.total_goal} ml"
+        font_size: '18sp'
+        size_hint_y: 0.1
+
+    BoxLayout:
+        size_hint_y: 0.2
+        spacing: 10
+        
+        TextInput:
+            id: water_input
+            hint_text: 'Digite a quantidade em ml'
+            multiline: False
+            input_filter: 'float' # Permite apenas números
+            font_size: '18sp'
+
+        Button:
+            text: "Adicionar"
+            font_size: '18sp'
+            size_hint_x: 0.4 # Ocupa 40% da largura
+            on_press: root.log_water() # Chama a função log_water() do Python
