@@ -1,48 +1,160 @@
 # Arquivo: waterapp.kv
-<WaterAppLayout>:
-    orientation: 'vertical'
-    padding: 20
-    spacing: 15
 
-    # IDs permitem que o código Python acesse estes elementos
-    id: main_layout 
-
-    Label:
-        text: "Meu Lembrete de Água"
-        font_size: '24sp'
-        size_hint_y: 0.1 # Ocupa 10% da altura
-
-    Label:
-        id: time_goal_label
-        text: "Até agora, você deveria ter bebido: 0 ml"
-        font_size: '16sp'
-        size_hint_y: 0.1
-
-    ProgressBar:
-        id: progress_bar
-        max: root.total_goal # O valor máximo da barra é a meta total
-        value: 0
-        size_hint_y: 0.1
-
-    Label:
-        id: progress_label
-        text: f"0 / {root.total_goal} ml"
-        font_size: '18sp'
-        size_hint_y: 0.1
-
+# Define o layout da tela principal
+<MainScreen>:
     BoxLayout:
-        size_hint_y: 0.2
-        spacing: 10
+        orientation: 'vertical'
+        padding: 20
+        spacing: 15
+
+        Label:
+            text: "Meu Lembrete de Água"
+            font_size: '24sp'
+            size_hint_y: 0.1
+
+        Label:
+            id: time_goal_label
+            text: root.time_goal_text
+            font_size: '16sp'
+            size_hint_y: 0.1
+
+        ProgressBar:
+            id: progress_bar
+            max: root.total_goal
+            value: root.current_intake
+            size_hint_y: 0.1
+
+        Label:
+            id: progress_label
+            text: root.progress_text
+            font_size: '18sp'
+            size_hint_y: 0.1
+
+        BoxLayout:
+            size_hint_y: 0.2
+            spacing: 10
+            
+            TextInput:
+                id: water_input
+                hint_text: 'Digite a quantidade em ml'
+                multiline: False
+                input_filter: 'int'
+                font_size: '18sp'
+
+            Button:
+                text: "Adicionar"
+                font_size: '18sp'
+                size_hint_x: 0.4
+                on_press: root.log_water()
+
+        # Botões de Navegação
+        BoxLayout:
+            size_hint_y: 0.15
+            Button:
+                text: 'Início'
+                background_color: (0.2, 0.6, 0.8, 1) # Botão ativo
+            Button:
+                text: 'Histórico'
+                on_press: app.root.current = 'history'
+            Button:
+                text: 'Configurações'
+                on_press: app.root.current = 'settings'
+
+# Define o layout da tela de configurações
+<SettingsScreen>:
+    BoxLayout:
+        orientation: 'vertical'
+        padding: 20
+        spacing: 15
+
+        Label:
+            text: "Configurações"
+            font_size: '24sp'
+            size_hint_y: 0.15
+        
+        Label:
+            text: 'Meta diária de água (ml):'
+            halign: 'left'
+            size_hint_y: None
+            height: self.texture_size[1]
         
         TextInput:
-            id: water_input
-            hint_text: 'Digite a quantidade em ml'
-            multiline: False
-            input_filter: 'float' # Permite apenas números
-            font_size: '18sp'
+            id: goal_input
+            input_filter: 'int'
+            size_hint_y: None
+            height: '40dp'
 
+        Label:
+            text: 'Intervalo de notificação (horas):'
+            halign: 'left'
+            size_hint_y: None
+            height: self.texture_size[1]
+
+        TextInput:
+            id: interval_input
+            input_filter: 'int'
+            size_hint_y: None
+            height: '40dp'
+        
         Button:
-            text: "Adicionar"
-            font_size: '18sp'
-            size_hint_x: 0.4 # Ocupa 40% da largura
-            on_press: root.log_water() # Chama a função log_water() do Python
+            text: 'Salvar'
+            size_hint_y: None
+            height: '50dp'
+            on_press: root.save_settings()
+
+        Label:
+            id: save_feedback
+            size_hint_y: 0.2
+
+        # Botões de Navegação
+        BoxLayout:
+            size_hint_y: 0.15
+            Button:
+                text: 'Início'
+                on_press: app.root.current = 'main'
+            Button:
+                text: 'Histórico'
+                on_press: app.root.current = 'history'
+            Button:
+                text: 'Configurações'
+                background_color: (0.2, 0.6, 0.8, 1) # Botão ativo
+
+# Define o layout da tela de histórico
+<HistoryScreen>:
+    BoxLayout:
+        orientation: 'vertical'
+        padding: 20
+        spacing: 15
+
+        Label:
+            text: "Histórico de Consumo"
+            font_size: '24sp'
+            size_hint_y: 0.15
+
+        ScrollView:
+            GridLayout:
+                id: history_grid
+                cols: 1
+                spacing: 10
+                size_hint_y: None
+                height: self.minimum_height
+
+        # Botões de Navegação
+        BoxLayout:
+            size_hint_y: 0.15
+            Button:
+                text: 'Início'
+                on_press: app.root.current = 'main'
+            Button:
+                text: 'Histórico'
+                background_color: (0.2, 0.6, 0.8, 1) # Botão ativo
+            Button:
+                text: 'Configurações'
+                on_press: app.root.current = 'settings'
+
+# Define um widget para a linha do histórico
+<HistoryLabel>:
+    size_hint_y: None
+    height: '40dp'
+    Label:
+        text: root.text

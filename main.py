@@ -3,134 +3,200 @@ import json
 import os
 from kivy.app import App
 from kivy.uix.boxlayout import BoxLayout
+from kivy.uix.screenmanager import ScreenManager, Screen
 from kivy.clock import Clock
+from kivy.properties import NumericProperty, StringProperty
 from datetime import datetime, date
 
-# --- Importações específicas para Android ---
-# Essas importações causarão um erro se você rodar no PC.
-# O Kivy as ignora no PC, mas o buildozer as usa no celular.
+# --- Bloco de importação para Android (ignorado no PC) ---
 try:
     from android_permissions import request_permissions, Permission
     from jnius import autoclass
 except ImportError:
-    # Define classes falsas para poder testar no PC sem erros
     class Permission:
-        POST_NOTIFICATIONS = "POST_NOTIFICATIONS" # Apenas um placeholder
+        POST_NOTIFICATIONS = "POST_NOTIFICATIONS"
     def request_permissions(perms, callback=None):
         pass
 
 kivy.require('2.1.0')
 
-class WaterAppLayout(BoxLayout):
-    total_goal = 2500
-    current_intake = 0.0
+# --- Classes das Telas ---
 
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        # O carregamento de dados foi movido para o método on_start do App
+class MainScreen(Screen):
+    # Propriedades do Kivy que se atualizam automaticamente na interface
+    time_goal_text = StringProperty("Até agora, você deveria ter bebido: 0 ml")
+    progress_text = StringProperty("0 / 2500 ml")
+    current_intake = NumericProperty(0)
+    total_goal = NumericProperty(2500) # Valor padrão
+
+    def on_enter(self, *args):
+        """Executado sempre que a tela principal é exibida."""
+        # Carrega as configurações mais recentes
+        app = App.get_running_app()
+        self.total_goal = app.settings.get('goal', 2500)
+        self.current_intake = app.history.get(str(date.today()), {}).get('intake', 0)
         Clock.schedule_interval(self.update_labels, 1)
 
+    def on_leave(self, *args):
+        """Para o relógio quando sai da tela para economizar bateria."""
+        Clock.unschedule(self.update_labels)
+
     def update_labels(self, *args):
+        # Atualiza a meta por horário
         now = datetime.now()
         start_time = now.replace(hour=8, minute=0, second=0, microsecond=0)
         end_time = now.replace(hour=22, minute=0, second=0, microsecond=0)
         
-        if now < start_time:
-            time_goal = 0
-        elif now > end_time:
-            time_goal = self.total_goal
+        if now < start_time: time_goal = 0
+        elif now > end_time: time_goal = self.total_goal
         else:
             total_seconds_in_day = (end_time - start_time).total_seconds()
             seconds_passed = (now - start_time).total_seconds()
             time_goal = (seconds_passed / total_seconds_in_day) * self.total_goal
 
-        self.ids.time_goal_label.text = f"Até agora, você deveria ter bebido: {int(time_goal)} ml"
-        self.ids.progress_bar.value = self.current_intake
-        self.ids.progress_label.text = f"{int(self.current_intake)} / {self.total_goal} ml"
+        self.time_goal_text = f"Até agora, você deveria ter bebido: {int(time_goal)} ml"
+        self.progress_text = f"{int(self.current_intake)} / {int(self.total_goal)} ml"
 
     def log_water(self):
         try:
             amount = float(self.ids.water_input.text)
             self.current_intake += amount
             self.ids.water_input.text = ""
-            # Pede ao App para salvar o estado atual
-            App.get_running_app().save_state()
+            App.get_running_app().save_all_data() # Salva tudo
         except ValueError:
             self.ids.water_input.text = "Valor inválido"
 
-class WaterApp(App):
-    # Caminho para o arquivo que salvará os dados
-    @property
-    def state_file(self):
-        # user_data_dir é uma pasta segura que o Kivy oferece para cada app
-        return os.path.join(self.user_data_dir, 'state.json')
-
-    def on_start(self):
-        """Método executado quando o app inicia."""
-        # 1. Pedir permissão de notificação
-        request_permissions([Permission.POST_NOTIFICATIONS])
-
-        # 2. Iniciar o serviço de notificação em segundo plano
-        self.start_notification_service()
-
-        # 3. Carregar o estado salvo (consumo de água)
-        self.load_state()
-
-        # Vincula o método on_pause para salvar o estado quando o app for minimizado
-        self.bind(on_pause=self.save_state_on_pause)
-
-    def save_state_on_pause(self, *args):
-        self.save_state()
-        return True # Importante para o ciclo de vida do app Kivy
-
-    def load_state(self):
-        """Carrega o consumo de água do arquivo JSON."""
-        layout = self.root
-        today_str = str(date.today())
-
-        if os.path.exists(self.state_file):
-            with open(self.state_file, 'r') as f:
-                try:
-                    state_data = json.load(f)
-                    # Se a data salva for a de hoje, carrega o valor
-                    if state_data.get("date") == today_str:
-                        layout.current_intake = state_data.get("intake", 0)
-                    else: # Se for um dia diferente, reseta
-                        layout.current_intake = 0
-                except json.JSONDecodeError:
-                    layout.current_intake = 0
-        else: # Se o arquivo não existe, começa do zero
-            layout.current_intake = 0
-        
-        layout.update_labels() # Garante que a tela comece com os valores corretos
-
-    def save_state(self, *args):
-        """Salva o consumo atual e a data no arquivo JSON."""
-        state_data = {
-            "date": str(date.today()),
-            "intake": self.root.current_intake
-        }
-        with open(self.state_file, 'w') as f:
-            json.dump(state_data, f)
+class SettingsScreen(Screen):
+    def on_enter(self, *args):
+        """Carrega as configurações salvas nos campos de texto."""
+        app = App.get_running_app()
+        self.ids.goal_input.text = str(app.settings.get('goal', 2500))
+        self.ids.interval_input.text = str(app.settings.get('notification_interval_hours', 2))
     
-    def start_notification_service(self):
-        """Inicia o serviço de segundo plano no Android."""
-        # Este código só funciona no Android
+    def save_settings(self):
+        """Salva as novas configurações e reinicia o serviço de notificação."""
+        app = App.get_running_app()
         try:
-            # Importa a classe de Serviço do Android
-            service = autoclass('org.meuapp.waterapp.ServiceMyservice')
-            # Pega o contexto da aplicação Android
-            mActivity = autoclass('org.kivy.android.PythonActivity').mActivity
-            # Cria um "Intent" para iniciar o serviço
-            argument = ''
-            intent = autoclass('android.content.Intent')(mActivity, service)
-            # Inicia o serviço
-            mActivity.startService(intent)
-        except Exception as e:
-            print(f"Não foi possível iniciar o serviço (normal se não estiver no Android): {e}")
+            app.settings['goal'] = int(self.ids.goal_input.text)
+            app.settings['notification_interval_hours'] = int(self.ids.interval_input.text)
+            app.save_all_data()
+            
+            # Reinicia o serviço para usar o novo intervalo
+            app.stop_notification_service()
+            app.start_notification_service()
+
+            # Atualiza a tela principal com a nova meta
+            app.root.get_screen('main').total_goal = app.settings['goal']
+
+            self.ids.save_feedback.text = "Configurações salvas!"
+        except ValueError:
+            self.ids.save_feedback.text = "Valores inválidos!"
+
+class HistoryScreen(Screen):
+    def on_enter(self, *args):
+        """Lê o histórico e o exibe na tela."""
+        self.ids.history_grid.clear_widgets() # Limpa a lista antiga
+        app = App.get_running_app()
+        
+        # Ordena as datas do mais recente para o mais antigo
+        sorted_dates = sorted(app.history.keys(), reverse=True)
+
+        for day in sorted_dates:
+            data = app.history[day]
+            intake = data.get('intake', 0)
+            goal_met = "Sim" if data.get('goal_met', False) else "Não"
+            
+            entry_label = f"{day}: {int(intake)}ml - Meta cumprida: {goal_met}"
+            self.ids.history_grid.add_widget(HistoryLabel(text=entry_label))
+
+# --- Widget customizado para o histórico (para melhor formatação) ---
+class HistoryLabel(BoxLayout):
+    text = StringProperty('')
+
+# --- Classe principal do App ---
+
+class WaterApp(App):
+    # Caminho do arquivo de dados
+    @property
+    def data_file(self):
+        return os.path.join(self.user_data_dir, 'data.json')
 
     def build(self):
-        return WaterAppLayout()
+        self.settings = {}
+        self.history = {}
+        self.load_all_data()
+        
+        # Cria o gerenciador de telas
+        sm = ScreenManager()
+        sm.add_widget(MainScreen(name='main'))
+        sm.add_widget(SettingsScreen(name='settings'))
+        sm.add_widget(HistoryScreen(name='history'))
+        return sm
+
+    def on_start(self):
+        request_permissions([Permission.POST_NOTIFICATIONS])
+        self.start_notification_service()
+        self.bind(on_pause=self.on_pause_save)
+
+    def on_pause_save(self, *args):
+        self.save_all_data()
+        return True
+
+    def load_all_data(self):
+        """Carrega configurações e histórico do arquivo JSON."""
+        if os.path.exists(self.data_file):
+            with open(self.data_file, 'r') as f:
+                try:
+                    data = json.load(f)
+                    self.settings = data.get('settings', {'goal': 2500, 'notification_interval_hours': 2})
+                    self.history = data.get('history', {})
+                except json.JSONDecodeError:
+                    self.setup_default_data()
+        else:
+            self.setup_default_data()
+
+    def setup_default_data(self):
+        """Cria dados padrão se o arquivo não existir."""
+        self.settings = {'goal': 2500, 'notification_interval_hours': 2}
+        self.history = {}
+
+    def save_all_data(self, *args):
+        """Salva o estado atual (configurações e histórico) no arquivo."""
+        today_str = str(date.today())
+        main_screen = self.root.get_screen('main')
+
+        # Atualiza o histórico do dia atual
+        self.history[today_str] = {
+            "intake": main_screen.current_intake,
+            "goal_met": main_screen.current_intake >= main_screen.total_goal
+        }
+
+        # Junta tudo para salvar
+        full_data = {
+            'settings': self.settings,
+            'history': self.history
+        }
+        with open(self.data_file, 'w') as f:
+            json.dump(full_data, f, indent=4)
+    
+    def start_notification_service(self):
+        try:
+            service = autoclass('org.meuapp.waterapp.ServiceMyservice')
+            mActivity = autoclass('org.kivy.android.PythonActivity').mActivity
+            intent = autoclass('android.content.Intent')(mActivity, service)
+            mActivity.startService(intent)
+        except Exception as e:
+            print(f"Serviço não iniciado (normal no PC): {e}")
+
+    def stop_notification_service(self):
+        try:
+            service = autoclass('org.meuapp.waterapp.ServiceMyservice')
+            mActivity = autoclass('org.kivy.android.PythonActivity').mActivity
+            intent = autoclass('android.content.Intent')(mActivity, service)
+            mActivity.stopService(intent)
+        except Exception as e:
+            print(f"Serviço não parado (normal no PC): {e}")
+
 
 if __name__ == '__main__':
     WaterApp().run()
